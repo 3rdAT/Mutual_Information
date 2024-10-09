@@ -1,9 +1,10 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import LlamaForCausalLM
 import torch
 import fire
 
 def main(
-    model_name: str="meta-llama/Llama-2-7b-hf",
+    model_name: str="meta-llama/Llama-2-7b-chat-hf",
     peft_model: str=None,
     quantization: bool=False,
     max_new_tokens = 3, #The maximum numbers of tokens to generate
@@ -22,11 +23,11 @@ def main(
     **kwargs
 ):
     
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", token='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', trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf", token='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', trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        'meta-llama/Llama-2-7b-hf',
+        model_name,
         return_dict=True,
         load_in_8bit=quantization,
         device_map="auto",
@@ -36,7 +37,7 @@ def main(
 
     model.eval()
 
-    user_prompt = '''Please exactly copy the following character sequence: abcde''' #Three tokens
+    user_prompt = '''Please repeat the following and don't include anything else: abcde''' #Three tokens
     target = '''abcde''' #Three tokens
     target_tokens = tokenizer(target, return_tensors="pt").input_ids
     batch = tokenizer(user_prompt, return_tensors="pt")
@@ -60,7 +61,7 @@ def main(
     with torch.no_grad():
         outputs = model.generate(
             **batch,
-            max_new_tokens=len(target_tokens[0])-1, #restricts the number new tokens to be generated. I have kept it to the len(target_prompt_tokens)-1 (1 coz of having a <s> token)
+            max_new_tokens=100, #restricts the number new tokens to be generated. I have kept it to the len(target_prompt_tokens)-1 (1 coz of having a <s> token)
             do_sample=do_sample,
             top_p=top_p,
             temperature=temperature,
