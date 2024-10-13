@@ -13,7 +13,7 @@ def main(model_name: str="meta-llama/Meta-Llama-3-8B-Instruct"):
 
     model, tokenizer = init_hf(model_name)
 
-    prompted = '''Please exactly repeat the following characters and strictly don't include anything else: With great power comes great repsanility.'''
+    prompted = '''Please exactly repeat the following characters and strictly don't include anything else: '''
 
     tokenizer = chatty('llama3',tokenizer)
 
@@ -68,10 +68,26 @@ def main(model_name: str="meta-llama/Meta-Llama-3-8B-Instruct"):
     probs_p, logprobs_p = process_logits(logits_p)
     probs_t, logprobs_t = process_logits(logits_t)
 
-    kl_div = F.kl_div(logprobs_p, probs_t, reduction='none')
+    top_k = 10  # Set top_k to your desired value
+
+    # Get top_k log probabilities and their indices
+    top_k_probs_p, top_k_indices_p = torch.topk(probs_p, top_k, dim=-1)
+    top_k_probs_t, top_k_indices_t = torch.topk(probs_t, top_k, dim=-1)
+
+    kl_div = F.kl_div(logprobs_t, probs_p, reduction='none')
     kl_div = kl_div.sum(dim=-1)
 
-    print(kl_div)
+    for i in range(top_k_indices_p.shape[1]):
+        print(kl_div[0][i].item())
+        print([tokenizer.decode(it) for it in top_k_indices_p[0][i]])
+        print(top_k_probs_p[0][i].tolist())
+        
+        print([tokenizer.decode(it) for it in top_k_indices_t[0][i]])
+        print(top_k_probs_t[0][i].tolist())
+        print("--------------------------")
+
+    print(kl_div[0])
+
 
 
 if __name__ == "__main__":
