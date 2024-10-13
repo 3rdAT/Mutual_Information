@@ -13,4 +13,4 @@ def init_hf(model_name):
         token='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',
     )
 
-    model.eval()
+    return model, tokenizer
