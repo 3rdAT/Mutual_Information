@@ -1,9 +1,11 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import fire
+import torch
+import torch.nn.functional as F
 
 def main(
-    model_name: str="meta-llama/Meta-Llama-3-8B-Instruct",
+    model_name: str="meta-llama/Meta-Llama-3-8B",
     peft_model: str=None,
     quantization: bool=False,
     max_new_tokens = 3, #The maximum numbers of tokens to generate
@@ -39,7 +41,7 @@ def main(
     #Basically, in the prompted string I need to add the answer as well twice. I need to make sure that I append the appropriate token ids in the answer,
     #To ensure that I need to have the same token_ids in the prompted's two parts and the target's part.
 
-    prompted = '''Please exactly repeat the following characters and strictly don't include anything else: a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a b.''' #Three tokens
+    prompted = '''Please exactly repeat the following characters and strictly don't include anything else: With great power comes great repsanility.''' #Three tokens
     target = '''abcde'''
 
     tokenizer.chat_template = ("{% if messages[0]['role'] == 'system' %}"
@@ -103,6 +105,7 @@ def main(
 
     batch = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     print(f"The templated prompt:\n{batch}")
+    batch = batch + "With great power comes great resp."
 
     batch = tokenizer(batch, return_tensors="pt", add_special_tokens=False)
     prompt_len = len(batch['input_ids'][0])
@@ -126,10 +129,46 @@ def main(
             output_scores=True,
             **kwargs
         )
-    output_text = tokenizer.decode(outputs.sequences[0])
+
+    print("The model's output is:")
+    print(tokenizer.decode(outputs.sequences[0]))
+    print("=====================================")
+    print("The token is:",outputs.sequences[0][-3:][0])
+    print("The response is:", tokenizer.decode(outputs.sequences[0][-3:][0]))
+    output_text = tokenizer.decode(outputs.sequences[0][-3:][0])
+
+    # print("Sanity on token_id",tokenizer.decode([12014]))
+
+
+    # Convert logits to log probabilities
+    log_probs = []
+    for score in outputs.scores:
+        # Apply softmax to get probabilities, then take the log
+        probs = F.softmax(score, dim=-1)
+        log_prob = torch.log(probs)
+        log_probs.append(log_prob)
+
 
     print("The model's output is:\n",output_text)
+    print(len(log_probs))
 
+    log_prob_last_position = log_probs[-1][0]  # Accessing the second-to-last logits and the first token's logits
+    top_k = 10  # Set top_k to your desired value
+
+    # Get top_k log probabilities and their indices
+    top_k_probs, top_k_indices = torch.topk(log_prob_last_position, top_k, dim=-1)
+
+    print(f"The prompt is:{prompted}")
+
+    print(f"Top {top_k} probabilities:\n", top_k_probs)
+    print(f"Top {top_k} indices:\n", top_k_indices)
+    print(f"Top {top_k} tokens:\n", tokenizer.decode(top_k_indices))
+
+    # Loop through the top_k indices and decode each token
+    for i, token_id in enumerate(top_k_indices):
+        decoded_token = tokenizer.decode([token_id.item()])  # Decode the token ID
+        prob = top_k_probs[i].item()  # Get the corresponding log probability
+        print(f"Token {i+1}: {decoded_token}, Probability: {prob}")
 
 if __name__ == "__main__":
     fire.Fire(main)
